@@ -35,13 +35,22 @@
             android:textSize="14sp" />
     </LinearLayout>
 
-    <!-- 顶部信息胶囊 -->
+    <!-- 点击对焦的圆环 -->
+    <ImageView
+        android:id="@+id/focusRing"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:contentDescription="对焦中"
+        android:src="@drawable/focus_ring"
+        android:visibility="gone" />
+
+    <!-- 顶部：入口名胶囊 -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="18dp"
         android:background="@drawable/pill_bg"
         android:gravity="center_vertical"
         android:orientation="horizontal"
@@ -78,61 +87,110 @@
         android:src="@drawable/ic_close"
         app:tint="#FFFFFF" />
 
-    <TextView
-        android:id="@+id/tvCount"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="132dp"
+    <ImageButton
+        android:id="@+id/btnFlash"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
         android:background="@drawable/pill_bg"
-        android:paddingStart="12dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="6dp"
-        android:textColor="#FFFFFF"
-        android:textSize="13sp"
-        android:visibility="gone" />
+        android:contentDescription="闪光灯"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_flash_off"
+        app:tint="#FFFFFF" />
 
-    <ImageView
-        android:id="@+id/ivThumb"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        android:layout_gravity="bottom|start"
-        android:layout_marginStart="24dp"
-        android:layout_marginBottom="34dp"
-        android:background="@drawable/thumb_bg"
-        android:clipToOutline="true"
-        android:contentDescription="最近照片"
-        android:scaleType="centerCrop"
-        android:visibility="invisible" />
-
-    <!-- 相机扩展模式（自动/HDR/夜景/人像/美颜），仅设备支持时显示 -->
-    <HorizontalScrollView
-        android:id="@+id/modeScroll"
+    <!-- 底部控制区 -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginBottom="112dp"
+        android:orientation="vertical"
         android:paddingStart="16dp"
+        android:paddingTop="8dp"
         android:paddingEnd="16dp"
-        android:scrollbars="none"
-        android:visibility="gone">
+        android:paddingBottom="20dp">
 
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/modeGroup"
-            android:layout_width="wrap_content"
+        <!-- 曝光补偿 -->
+        <LinearLayout
+            android:id="@+id/exposureRow"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:selectionRequired="true"
-            app:singleLine="true"
-            app:singleSelection="true" />
-    </HorizontalScrollView>
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-    <ImageButton
-        android:id="@+id/btnShutter"
-        android:layout_width="76dp"
-        android:layout_height="76dp"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="24dp"
-        android:background="@drawable/shutter_button"
-        android:contentDescription="拍照" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="曝光"
+                android:textColor="#CCFFFFFF"
+                android:textSize="12sp" />
+
+            <SeekBar
+                android:id="@+id/exposureSeek"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1" />
+        </LinearLayout>
+
+        <!-- 相机扩展模式（自动/HDR/夜景/人像/美颜） -->
+        <HorizontalScrollView
+            android:id="@+id/modeScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/modeGroup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:selectionRequired="true"
+                app:singleLine="true"
+                app:singleSelection="true" />
+        </HorizontalScrollView>
+
+        <!-- 缩略图 / 快门 / 计数 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp">
+
+            <ImageView
+                android:id="@+id/ivThumb"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_gravity="start|center_vertical"
+                android:background="@drawable/thumb_bg"
+                android:clipToOutline="true"
+                android:contentDescription="最近照片"
+                android:scaleType="centerCrop"
+                android:visibility="invisible" />
+
+            <ImageButton
+                android:id="@+id/btnShutter"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:layout_gravity="center_horizontal"
+                android:background="@drawable/shutter_button"
+                android:contentDescription="拍照" />
+
+            <TextView
+                android:id="@+id/tvCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:background="@drawable/pill_bg"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </FrameLayout>
+    </LinearLayout>
 </FrameLayout>

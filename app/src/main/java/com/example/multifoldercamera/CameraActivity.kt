@@ -12,12 +12,18 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Size
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -37,12 +43,13 @@ import com.google.android.material.chip.Chip
 import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * 拍照页：由桌面快捷方式或列表按钮携带 folderId 启动。
  *
- * - 内置相机模式（默认）：拍完**不退出**，可连续拍摄；顶部可切换相机扩展模式
- *   （自动 / HDR / 夜景 / 人像 / 美颜，取决于设备厂商支持情况）。
+ * - 内置相机模式（默认）：拍完**不退出**，可连续拍摄；
+ *   支持相机扩展模式（自动/HDR/夜景/人像/美颜）与手动控制（点击对焦 / 双指缩放 / 曝光补偿 / 闪光灯）。
  * - 系统相机模式：点快门调起系统相机 App，拍完返回后**同样不退出**，可继续连拍。
  * - 进入前会申请「相机」权限（Android 9 及以下额外申请存储权限）。
  */
@@ -59,12 +66,14 @@ class CameraActivity : AppCompatActivity() {
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var extensionsManager: ExtensionsManager? = null
+    private var camera: Camera? = null
     private var imageCapture: ImageCapture? = null
     private var currentEntry: FolderEntry? = null
     private var useSystem = false
     private var shotCount = 0
     private var pendingUri: Uri? = null
     private var currentMode = MODE_NONE
+    private var flashMode = ImageCapture.FLASH_MODE_OFF
 
     /** 系统相机拍摄结果回调 */
     private val systemCameraLauncher = registerForActivityResult(
@@ -103,6 +112,8 @@ class CameraActivity : AppCompatActivity() {
 
         binding.btnShutter.setOnClickListener { onShutterClicked() }
         binding.btnClose.setOnClickListener { finish() }
+
+        setupManualControls()
 
         val missing = requiredPermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
@@ -154,13 +165,116 @@ class CameraActivity : AppCompatActivity() {
             binding.tvHint.text = entry.name
             binding.dotColor.backgroundTintList = ColorStateList.valueOf(entry.color)
             if (useSystem) {
+                // 系统相机模式：隐藏内置相机相关 UI
                 binding.viewFinder.visibility = View.GONE
                 binding.systemHint.visibility = View.VISIBLE
                 binding.modeScroll.visibility = View.GONE
+                binding.exposureRow.visibility = View.GONE
+                binding.btnFlash.visibility = View.INVISIBLE
             } else {
                 setupCamera()
             }
         }
+    }
+
+    /* ---------------- 手动控制：对焦 / 缩放 / 曝光 / 闪光灯 ---------------- */
+
+    private fun setupManualControls() {
+        // 双指缩放
+        val scaleDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    val cam = camera ?: return true
+                    val zoomState = cam.cameraInfo.zoomState.value ?: return true
+                    val target = (zoomState.zoomRatio * detector.scaleFactor)
+                        .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                    cam.cameraControl.setZoomRatio(target)
+                    return true
+                }
+            }
+        )
+        // 点击对焦
+        val tapDetector = GestureDetector(
+            this,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapUp(e: MotionEvent): Boolean {
+                    if (!scaleDetector.isInProgress) focusAt(e.x, e.y)
+                    return true
+                }
+            }
+        )
+        binding.viewFinder.setOnTouchListener { _, event ->
+            scaleDetector.onTouchEvent(event)
+            tapDetector.onTouchEvent(event)
+            true
+        }
+
+        // 闪光灯切换
+        binding.btnFlash.setOnClickListener { cycleFlash() }
+
+        // 曝光补偿
+        binding.exposureSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val cam = camera ?: return
+                val state = cam.cameraInfo.exposureState
+                if (!state.isExposureCompensationSupported) return
+                cam.cameraControl.setExposureCompensationIndex(
+                    state.exposureCompensationRange.lower + progress
+                )
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+    }
+
+    private fun focusAt(x: Float, y: Float) {
+        val cam = camera ?: return
+        val point = binding.viewFinder.meteringPointFactory.createPoint(x, y)
+        val action = FocusMeteringAction
+            .Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
+            .setAutoCancelDuration(3, TimeUnit.SECONDS)
+            .build()
+        cam.cameraControl.startFocusAndMetering(action)
+        showFocusRing(x, y)
+    }
+
+    private fun showFocusRing(x: Float, y: Float) {
+        val ring = binding.focusRing
+        val sizePx = 72 * resources.displayMetrics.density
+        ring.animate().cancel()
+        ring.visibility = View.VISIBLE
+        ring.alpha = 1f
+        ring.translationX = x - sizePx / 2f
+        ring.translationY = y - sizePx / 2f
+        ring.scaleX = 1.4f
+        ring.scaleY = 1.4f
+        ring.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+        ring.postDelayed({
+            ring.animate().alpha(0f).setDuration(300)
+                .withEndAction { ring.visibility = View.GONE }.start()
+        }, 900)
+    }
+
+    private fun cycleFlash() {
+        flashMode = when (flashMode) {
+            ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_AUTO
+            ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON
+            else -> ImageCapture.FLASH_MODE_OFF
+        }
+        imageCapture?.flashMode = flashMode
+        updateFlashIcon()
+    }
+
+    private fun updateFlashIcon() {
+        val resId = when (flashMode) {
+            ImageCapture.FLASH_MODE_AUTO -> R.drawable.ic_flash_auto
+            ImageCapture.FLASH_MODE_ON -> R.drawable.ic_flash_on
+            else -> R.drawable.ic_flash_off
+        }
+        binding.btnFlash.setImageResource(resId)
     }
 
     /* ---------------- 内置相机 + CameraX Extensions ---------------- */
@@ -171,7 +285,6 @@ class CameraActivity : AppCompatActivity() {
             try {
                 val provider = providerFuture.get()
                 cameraProvider = provider
-                // 查询设备支持的扩展模式（自动/HDR/夜景/人像/美颜）
                 val extFuture = ExtensionsManager.getInstanceAsync(this, provider)
                 extFuture.addListener({
                     extensionsManager = runCatching { extFuture.get() }.getOrNull()
@@ -211,7 +324,6 @@ class CameraActivity : AppCompatActivity() {
             }
             binding.modeGroup.addView(chip)
         }
-        // 只有设备支持扩展时才显示模式条
         binding.modeScroll.visibility = if (items.size > 1) View.VISIBLE else View.GONE
     }
 
@@ -225,6 +337,7 @@ class CameraActivity : AppCompatActivity() {
         }
         val capture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .setFlashMode(flashMode)
             .build()
         imageCapture = capture
         provider.unbindAll()
@@ -237,11 +350,31 @@ class CameraActivity : AppCompatActivity() {
             } else {
                 baseSelector
             }
-            provider.bindToLifecycle(this, selector, preview, capture)
+            camera = provider.bindToLifecycle(this, selector, preview, capture)
+            syncExposureUi(camera)
         } catch (e: Exception) {
             e.printStackTrace()
-            // 扩展绑定失败则回退到普通模式
-            runCatching { provider.bindToLifecycle(this, baseSelector, preview, capture) }
+            runCatching {
+                camera = provider.bindToLifecycle(this, baseSelector, preview, capture)
+                syncExposureUi(camera)
+            }
+        }
+    }
+
+    /** 根据相机能力初始化曝光补偿滑块 */
+    private fun syncExposureUi(cam: Camera?) {
+        val state = cam?.cameraInfo?.exposureState ?: run {
+            binding.exposureRow.visibility = View.GONE
+            return
+        }
+        if (state.isExposureCompensationSupported) {
+            val range = state.exposureCompensationRange
+            binding.exposureRow.visibility = View.VISIBLE
+            binding.exposureSeek.max = (range.upper - range.lower).coerceAtLeast(0)
+            binding.exposureSeek.progress = (state.exposureCompensationIndex - range.lower)
+                .coerceIn(0, binding.exposureSeek.max)
+        } else {
+            binding.exposureRow.visibility = View.GONE
         }
     }
 
