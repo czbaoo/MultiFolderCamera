@@ -106,6 +106,27 @@
         android:scaleType="centerCrop"
         android:visibility="invisible" />
 
+    <!-- 相机扩展模式（自动/HDR/夜景/人像/美颜），仅设备支持时显示 -->
+    <HorizontalScrollView
+        android:id="@+id/modeScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="112dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/modeGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleLine="true"
+            app:singleSelection="true" />
+    </HorizontalScrollView>
+
     <ImageButton
         android:id="@+id/btnShutter"
         android:layout_width="76dp"

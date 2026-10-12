@@ -22,7 +22,11 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionSessionConfig
+import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.lifecycle.awaitInstance
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.multifoldercamera.data.AppDatabase
@@ -31,6 +35,7 @@ import com.example.multifoldercamera.data.FolderRepository
 import com.example.multifoldercamera.databinding.ActivityCameraBinding
 import com.example.multifoldercamera.util.MediaStoreHelper
 import com.example.multifoldercamera.util.PrefsHelper
+import com.google.android.material.chip.Chip
 import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -38,24 +43,30 @@ import java.util.concurrent.Executors
 /**
  * 拍照页：由桌面快捷方式或列表按钮携带 folderId 启动。
  *
- * - 内置相机模式（默认）：拍完**不退出**，可连续拍摄，左下角显示缩略图与计数。
- * - 系统相机模式：点快门调起系统相机 App，拍完返回后**同样不退出**，可继续点快门连拍。
- * - 进入前会申请「相机」权限（Android 9 及以下额外申请存储权限），并给出授权提示。
+ * - 内置相机模式（默认）：拍完**不退出**，可连续拍摄；顶部可切换相机扩展模式
+ *   （自动 / HDR / 夜景 / 人像 / 美颜，取决于设备厂商支持情况）。
+ * - 系统相机模式：点快门调起系统相机 App，拍完返回后**同样不退出**，可继续连拍。
+ * - 进入前会申请「相机」权限（Android 9 及以下额外申请存储权限）。
  */
 class CameraActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_FOLDER_ID = "folder_id"
+        private const val MODE_NONE = -1
     }
 
     private lateinit var binding: ActivityCameraBinding
     private lateinit var repo: FolderRepository
-    private var imageCapture: ImageCapture? = null
     private lateinit var cameraExecutor: ExecutorService
+
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var extensionsManager: ExtensionsManager? = null
+    private var imageCapture: ImageCapture? = null
     private var currentEntry: FolderEntry? = null
     private var useSystem = false
     private var shotCount = 0
     private var pendingUri: Uri? = null
+    private var currentMode = MODE_NONE
 
     /** 系统相机拍摄结果回调 */
     private val systemCameraLauncher = registerForActivityResult(
@@ -67,7 +78,6 @@ class CameraActivity : AppCompatActivity() {
             updateCountView()
             showThumbnail(uri)
         } else if (uri != null) {
-            // 取消拍摄，清理占位文件
             runCatching { contentResolver.delete(uri, null, null) }
         }
         // 关键：不退出，用户可继续拍摄
@@ -77,8 +87,7 @@ class CameraActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        val cameraGranted = result[Manifest.permission.CAMERA] == true
-        if (cameraGranted) {
+        if (result[Manifest.permission.CAMERA] == true) {
             initCamera()
         } else {
             showPermissionDeniedDialog()
@@ -97,7 +106,6 @@ class CameraActivity : AppCompatActivity() {
         binding.btnShutter.setOnClickListener { onShutterClicked() }
         binding.btnClose.setOnClickListener { finish() }
 
-        // 先检查权限，再初始化
         val missing = requiredPermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
@@ -109,7 +117,6 @@ class CameraActivity : AppCompatActivity() {
         }
     }
 
-    /** 需要的权限：相机；Android 9 及以下写共享目录还需存储权限 */
     private fun requiredPermissions(): List<String> {
         val list = mutableListOf(Manifest.permission.CAMERA)
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
@@ -151,9 +158,83 @@ class CameraActivity : AppCompatActivity() {
             if (useSystem) {
                 binding.viewFinder.visibility = View.GONE
                 binding.systemHint.visibility = View.VISIBLE
+                binding.modeScroll.visibility = View.GONE
             } else {
-                startCamera()
+                setupCamera()
             }
+        }
+    }
+
+    /* ---------------- 内置相机 + CameraX Extensions ---------------- */
+
+    private suspend fun setupCamera() {
+        try {
+            val provider = ProcessCameraProvider.awaitInstance(this)
+            cameraProvider = provider
+            extensionsManager = runCatching {
+                ExtensionsManager.getInstance(this, provider)
+            }.getOrNull()
+            buildModeChips()
+            bindWithMode(MODE_NONE)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "相机初始化失败", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 根据设备支持的扩展模式，生成模式切换条 */
+    private fun buildModeChips() {
+        val ext = extensionsManager ?: return
+        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        val items = mutableListOf("普通" to MODE_NONE)
+        fun addIfAvailable(mode: Int, label: String) {
+            if (ext.isExtensionAvailable(selector, mode)) items.add(label to mode)
+        }
+        addIfAvailable(ExtensionMode.AUTO, "自动")
+        addIfAvailable(ExtensionMode.HDR, "HDR")
+        addIfAvailable(ExtensionMode.NIGHT, "夜景")
+        addIfAvailable(ExtensionMode.BOKEH, "人像")
+        addIfAvailable(ExtensionMode.FACE_RETOUCH, "美颜")
+
+        binding.modeGroup.removeAllViews()
+        items.forEach { (label, mode) ->
+            val chip = Chip(this).apply {
+                text = label
+                isCheckable = true
+                isChecked = mode == currentMode
+                setOnClickListener { if (mode != currentMode) bindWithMode(mode) }
+            }
+            binding.modeGroup.addView(chip)
+        }
+        // 只有设备支持扩展时才显示模式条
+        binding.modeScroll.visibility = if (items.size > 1) View.VISIBLE else View.GONE
+    }
+
+    /** 以指定模式绑定相机（mode = MODE_NONE 表示不启用扩展） */
+    private fun bindWithMode(mode: Int) {
+        val provider = cameraProvider ?: return
+        currentMode = mode
+        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(binding.viewFinder.surfaceProvider)
+        }
+        val capture = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .build()
+        imageCapture = capture
+        provider.unbindAll()
+        try {
+            val ext = extensionsManager
+            if (mode != MODE_NONE && ext != null && ext.isExtensionAvailable(selector, mode)) {
+                val config = ExtensionSessionConfig(mode, ext, capture, preview)
+                provider.bindToLifecycle(this, selector, config)
+            } else {
+                provider.bindToLifecycle(this, selector, preview, capture)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // 扩展绑定失败则回退到普通模式
+            runCatching { provider.bindToLifecycle(this, selector, preview, capture) }
         }
     }
 
@@ -165,27 +246,6 @@ class CameraActivity : AppCompatActivity() {
     private fun updateCountView() {
         binding.tvCount.visibility = View.VISIBLE
         binding.tvCount.text = "已拍 $shotCount 张"
-    }
-
-    /* ---------------- 内置相机：连续拍摄 ---------------- */
-
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(binding.viewFinder.surfaceProvider)
-            }
-            imageCapture = ImageCapture.Builder().build()
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }, ContextCompat.getMainExecutor(this))
     }
 
     private fun takePhoto(entry: FolderEntry) {
