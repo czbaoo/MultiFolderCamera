@@ -30,7 +30,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="点击下方按钮，用系统相机拍照"
+            android:text="正在打开系统相机…"
             android:textColor="#99FFFFFF"
             android:textSize="14sp" />
     </LinearLayout>

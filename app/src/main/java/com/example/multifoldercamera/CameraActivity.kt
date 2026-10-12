@@ -171,12 +171,13 @@ class CameraActivity : AppCompatActivity() {
             binding.tvHint.text = entry.name
             binding.dotColor.backgroundTintList = ColorStateList.valueOf(entry.color)
             if (useSystem) {
-                // 系统相机模式：隐藏内置相机相关 UI
+                // 系统相机模式：隐藏内置相机 UI，直接拉起系统相机
                 binding.viewFinder.visibility = View.GONE
                 binding.systemHint.visibility = View.VISIBLE
                 binding.modeScroll.visibility = View.GONE
                 binding.exposureRow.visibility = View.GONE
                 binding.btnFlash.visibility = View.INVISIBLE
+                startSystemCameraFlow(entry)
             } else {
                 setupCamera()
             }
