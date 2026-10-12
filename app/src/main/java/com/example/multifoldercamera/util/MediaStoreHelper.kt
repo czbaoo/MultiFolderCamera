@@ -56,4 +56,33 @@ object MediaStoreHelper {
         MediaScannerConnection.scanFile(context, arrayOf(uri.toString()), arrayOf("image/jpeg"), null)
         return uri
     }
+
+    /**
+     * 为「系统相机」模式预先创建一个输出 URI。
+     * 不设置 IS_PENDING，以便相机应用（其它进程）能够直接写入。
+     */
+    fun createOutputUri(context: Context, entry: FolderEntry): Uri? {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val displayName = "${entry.name}_$timeStamp.jpg"
+        val relativePath = "Pictures/${entry.rootDir}/${entry.name}"
+
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, relativePath)
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                put(MediaStore.Images.Media.DATA, "$dir/$relativePath/$displayName")
+            }
+        }
+
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        return context.contentResolver.insert(collection, values)
+    }
 }

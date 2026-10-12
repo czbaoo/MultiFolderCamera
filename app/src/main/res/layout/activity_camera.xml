@@ -18,6 +18,26 @@
         android:padding="8dp"
         android:textColor="#FFFFFF" />
 
+    <TextView
+        android:id="@+id/tvCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="124dp"
+        android:background="#80000000"
+        android:padding="6dp"
+        android:textColor="#FFFFFF" />
+
+    <ImageView
+        android:id="@+id/ivThumb"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="24dp"
+        android:background="#80000000"
+        android:contentDescription="最近照片"
+        android:scaleType="centerCrop" />
+
     <ImageButton
         android:id="@+id/btnClose"
         android:layout_width="48dp"

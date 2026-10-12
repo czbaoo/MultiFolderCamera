@@ -16,6 +16,7 @@ import com.example.multifoldercamera.data.AppDatabase
 import com.example.multifoldercamera.data.FolderEntry
 import com.example.multifoldercamera.data.FolderRepository
 import com.example.multifoldercamera.databinding.ActivityMainBinding
+import com.example.multifoldercamera.util.PrefsHelper
 import com.example.multifoldercamera.util.ShortcutHelper
 import kotlinx.coroutines.launch
 import java.util.Random
@@ -41,6 +42,11 @@ class MainActivity : AppCompatActivity() {
         repo = FolderRepository(AppDatabase.getDatabase(this).folderEntryDao())
 
         binding.fabAdd.setOnClickListener { showAddDialog() }
+
+        binding.cbSystemCamera.isChecked = PrefsHelper.useSystemCamera(this)
+        binding.cbSystemCamera.setOnCheckedChangeListener { _, checked ->
+            PrefsHelper.setUseSystemCamera(this, checked)
+        }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

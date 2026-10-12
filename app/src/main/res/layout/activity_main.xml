@@ -18,6 +18,13 @@
         android:layout_marginTop="8dp"
         android:text="新建入口后，点「加到桌面」为每个入口生成一个独立图标" />
 
+    <CheckBox
+        android:id="@+id/cbSystemCamera"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="调用系统相机拍照（关闭则用内置相机连续拍摄）" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
