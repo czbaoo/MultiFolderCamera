@@ -4,6 +4,8 @@ plugins {
     id 'org.jetbrains.kotlin.kapt'
 }
 
+def releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+
 android {
     namespace 'com.example.multifoldercamera'
     compileSdk 34
@@ -16,10 +18,24 @@ android {
         versionName "1.0"
     }
 
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (releaseKeystorePath != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 

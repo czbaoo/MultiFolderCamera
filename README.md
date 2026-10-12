@@ -59,11 +59,25 @@ git push
 
 推送代码（或发起 PR、或手动 `workflow_dispatch`）后，Actions 会自动：
 1. 安装 JDK 17 与 Android SDK
-2. 接受 SDK 许可
-3. 执行 `./gradlew assembleDebug`
-4. 在 Artifacts 中提供 `app-debug.apk` 下载
+2. 从 Secrets 解码 release keystore
+3. 执行 `./gradlew assembleRelease`（使用固定 release 签名）
+4. 在 Artifacts 中提供 `app-release.apk` 下载
 
 > 首次运行会自动下载 Android SDK 平台（compileSdk 34）与构建工具，请确保 Actions 运行环境可联网。
+
+### release 签名（保证多次构建签名一致）
+
+CI 使用仓库 Secrets 中固定的 keystore 签名，因此**每次构建出的 APK 签名完全一致**，可互相覆盖安装。所需 Secrets：
+
+| Secret 名称 | 说明 |
+|---|---|
+| `KEYSTORE_BASE64` | keystore 文件的 base64 编码 |
+| `KEYSTORE_PASSWORD` | keystore 口令 |
+| `KEY_ALIAS` | 密钥别名 |
+| `KEY_PASSWORD` | 密钥口令 |
+
+> 本地构建若需要同样签名，设置同名环境变量后执行 `./gradlew assembleRelease` 即可。
+> 请务必离线备份 keystore 与口令——丢失后将无法用同一签名更新已发布的应用。
 
 ## 使用步骤
 
