@@ -80,14 +80,20 @@ class CameraActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val uri = pendingUri
-        if (result.resultCode == RESULT_OK && uri != null) {
-            shotCount++
-            updateCountView()
-            showThumbnail(uri)
-        } else if (uri != null) {
-            runCatching { contentResolver.delete(uri, null, null) }
+        if (result.resultCode == RESULT_OK) {
+            // 拍到照片：更新计数与缩略图
+            if (uri != null) {
+                shotCount++
+                updateCountView()
+                showThumbnail(uri)
+            }
+            // 关键：拍完不停留，立即再次拉起系统相机，形成连拍循环
+            currentEntry?.let { startSystemCameraFlow(it) }
+        } else {
+            // 用户按系统返回键 / 取消：清理占位文件并退出
+            if (uri != null) runCatching { contentResolver.delete(uri, null, null) }
+            finish()
         }
-        // 关键：不退出，用户可继续拍摄
     }
 
     /** 权限申请结果回调 */
