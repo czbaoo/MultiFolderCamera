@@ -1,17 +1,21 @@
 package com.example.multifoldercamera
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Size
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -36,6 +40,7 @@ import java.util.concurrent.Executors
  *
  * - 内置相机模式（默认）：拍完**不退出**，可连续拍摄，左下角显示缩略图与计数。
  * - 系统相机模式：点快门调起系统相机 App，拍完返回后**同样不退出**，可继续点快门连拍。
+ * - 进入前会申请「相机」权限（Android 9 及以下额外申请存储权限），并给出授权提示。
  */
 class CameraActivity : AppCompatActivity() {
 
@@ -52,6 +57,7 @@ class CameraActivity : AppCompatActivity() {
     private var shotCount = 0
     private var pendingUri: Uri? = null
 
+    /** 系统相机拍摄结果回调 */
     private val systemCameraLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -67,6 +73,18 @@ class CameraActivity : AppCompatActivity() {
         // 关键：不退出，用户可继续拍摄
     }
 
+    /** 权限申请结果回调 */
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val cameraGranted = result[Manifest.permission.CAMERA] == true
+        if (cameraGranted) {
+            initCamera()
+        } else {
+            showPermissionDeniedDialog()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCameraBinding.inflate(layoutInflater)
@@ -79,6 +97,46 @@ class CameraActivity : AppCompatActivity() {
         binding.btnShutter.setOnClickListener { onShutterClicked() }
         binding.btnClose.setOnClickListener { finish() }
 
+        // 先检查权限，再初始化
+        val missing = requiredPermissions().filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            initCamera()
+        } else {
+            Toast.makeText(this, "拍照需要使用相机权限，请点击「允许」", Toast.LENGTH_LONG).show()
+            permissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    /** 需要的权限：相机；Android 9 及以下写共享目录还需存储权限 */
+    private fun requiredPermissions(): List<String> {
+        val list = mutableListOf(Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        return list
+    }
+
+    private fun showPermissionDeniedDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("需要相机权限")
+            .setMessage("拍照功能需要相机权限。请在系统设置中允许「相机」权限后重试。")
+            .setCancelable(false)
+            .setPositiveButton("去设置") { _, _ ->
+                startActivity(
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", packageName, null)
+                    )
+                )
+                finish()
+            }
+            .setNegativeButton("取消") { _, _ -> finish() }
+            .show()
+    }
+
+    private fun initCamera() {
         val folderId = intent.getLongExtra(EXTRA_FOLDER_ID, -1L)
         lifecycleScope.launch {
             currentEntry = repo.getById(folderId)

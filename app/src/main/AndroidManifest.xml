@@ -2,10 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <!-- 仅 Android 9 及以下需要写外部存储权限 -->
+    <!-- 仅 Android 9 及以下需要写外部存储权限；Android 10+ 通过 MediaStore 写入无需任何存储权限 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
+        android:maxSdkVersion="28" />
     <uses-feature android:name="android.hardware.camera.any" />
 
     <application
