@@ -2,12 +2,14 @@ package com.example.multifoldercamera
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Size
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -30,10 +32,10 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
- * 拍照页：由桌面快捷方式携带 folderId 启动。
+ * 拍照页：由桌面快捷方式或列表按钮携带 folderId 启动。
  *
- * - 内置相机模式（默认）：拍完**不退出**，可连续拍摄，左下角显示最近一张缩略图与计数——逻辑与系统相机一致。
- * - 系统相机模式：直接调起手机自带相机 App 拍摄，拍完返回后结束。
+ * - 内置相机模式（默认）：拍完**不退出**，可连续拍摄，左下角显示缩略图与计数。
+ * - 系统相机模式：点快门调起系统相机 App，拍完返回后**同样不退出**，可继续点快门连拍。
  */
 class CameraActivity : AppCompatActivity() {
 
@@ -46,21 +48,23 @@ class CameraActivity : AppCompatActivity() {
     private var imageCapture: ImageCapture? = null
     private lateinit var cameraExecutor: ExecutorService
     private var currentEntry: FolderEntry? = null
+    private var useSystem = false
     private var shotCount = 0
     private var pendingUri: Uri? = null
 
-    /** 系统相机拍摄结果回调 */
     private val systemCameraLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val uri = pendingUri
         if (result.resultCode == RESULT_OK && uri != null) {
-            Toast.makeText(this, "已保存到「${currentEntry?.name}」", Toast.LENGTH_SHORT).show()
+            shotCount++
+            updateCountView()
+            showThumbnail(uri)
         } else if (uri != null) {
-            // 用户取消：清理占位文件
+            // 取消拍摄，清理占位文件
             runCatching { contentResolver.delete(uri, null, null) }
         }
-        finish()
+        // 关键：不退出，用户可继续拍摄
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,6 +74,7 @@ class CameraActivity : AppCompatActivity() {
 
         repo = FolderRepository(AppDatabase.getDatabase(this).folderEntryDao())
         cameraExecutor = Executors.newSingleThreadExecutor()
+        useSystem = PrefsHelper.useSystemCamera(this)
 
         binding.btnShutter.setOnClickListener { onShutterClicked() }
         binding.btnClose.setOnClickListener { finish() }
@@ -83,9 +88,11 @@ class CameraActivity : AppCompatActivity() {
                 finish()
                 return@launch
             }
-            binding.tvHint.text = "保存到：${entry.name}"
-            if (PrefsHelper.useSystemCamera(this@CameraActivity)) {
-                startSystemCameraFlow(entry)
+            binding.tvHint.text = entry.name
+            binding.dotColor.backgroundTintList = ColorStateList.valueOf(entry.color)
+            if (useSystem) {
+                binding.viewFinder.visibility = View.GONE
+                binding.systemHint.visibility = View.VISIBLE
             } else {
                 startCamera()
             }
@@ -94,7 +101,12 @@ class CameraActivity : AppCompatActivity() {
 
     private fun onShutterClicked() {
         val entry = currentEntry ?: return
-        takePhoto(entry)
+        if (useSystem) startSystemCameraFlow(entry) else takePhoto(entry)
+    }
+
+    private fun updateCountView() {
+        binding.tvCount.visibility = View.VISIBLE
+        binding.tvCount.text = "已拍 $shotCount 张"
     }
 
     /* ---------------- 内置相机：连续拍摄 ---------------- */
@@ -134,9 +146,8 @@ class CameraActivity : AppCompatActivity() {
                 runOnUiThread {
                     binding.btnShutter.isEnabled = true
                     if (uri != null) {
-                        // 与系统相机一致：拍完继续留在取景界面，可连续拍摄
                         shotCount++
-                        binding.tvCount.text = "已拍 $shotCount 张"
+                        updateCountView()
                         showThumbnail(uri)
                     } else {
                         Toast.makeText(this@CameraActivity, "保存失败", Toast.LENGTH_SHORT).show()
@@ -156,28 +167,27 @@ class CameraActivity : AppCompatActivity() {
     /** 显示最近一张照片的缩略图（左下角） */
     private fun showThumbnail(uri: Uri) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                binding.ivThumb.setImageBitmap(
-                    contentResolver.loadThumbnail(uri, Size(160, 160), null)
-                )
+            val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentResolver.loadThumbnail(uri, Size(160, 160), null)
             } else {
                 val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
                 contentResolver.openInputStream(uri)?.use { input ->
-                    binding.ivThumb.setImageBitmap(BitmapFactory.decodeStream(input, null, opts))
+                    BitmapFactory.decodeStream(input, null, opts)
                 }
             }
+            binding.ivThumb.setImageBitmap(bmp)
+            binding.ivThumb.visibility = View.VISIBLE
         } catch (e: Exception) {
             // 缩略图失败不影响主流程
         }
     }
 
-    /* ---------------- 系统相机模式 ---------------- */
+    /* ---------------- 系统相机模式（可连拍） ---------------- */
 
     private fun startSystemCameraFlow(entry: FolderEntry) {
         val uri = MediaStoreHelper.createOutputUri(this, entry)
         if (uri == null) {
             Toast.makeText(this, "无法创建保存文件", Toast.LENGTH_SHORT).show()
-            finish()
             return
         }
         pendingUri = uri
@@ -190,7 +200,6 @@ class CameraActivity : AppCompatActivity() {
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(this, "未找到系统相机应用", Toast.LENGTH_SHORT).show()
             runCatching { contentResolver.delete(uri, null, null) }
-            finish()
         }
     }
 

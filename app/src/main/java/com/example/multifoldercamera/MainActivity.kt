@@ -1,10 +1,12 @@
 package com.example.multifoldercamera
 
 import android.app.AlertDialog
+import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.widget.Button
+import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -22,8 +24,8 @@ import kotlinx.coroutines.launch
 import java.util.Random
 
 /**
- * 入口管理页：列出所有拍照入口，支持新增、删除，
- * 并把每个入口「固定」到桌面形成独立图标。
+ * 入口管理页：列出所有拍照入口，可新增/删除/直接拍照，
+ * 也可把入口「固定」到桌面形成独立图标。
  */
 class MainActivity : AppCompatActivity() {
 
@@ -43,8 +45,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.fabAdd.setOnClickListener { showAddDialog() }
 
-        binding.cbSystemCamera.isChecked = PrefsHelper.useSystemCamera(this)
-        binding.cbSystemCamera.setOnCheckedChangeListener { _, checked ->
+        binding.swSystemCamera.isChecked = PrefsHelper.useSystemCamera(this)
+        binding.swSystemCamera.setOnCheckedChangeListener { _, checked ->
             PrefsHelper.setUseSystemCamera(this, checked)
         }
 
@@ -53,36 +55,46 @@ class MainActivity : AppCompatActivity() {
                 repo.allEntries.collect { renderList(it) }
             }
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!ShortcutHelper.canPinShortcut(this)) {
-                Toast.makeText(this, "当前启动器不支持固定快捷方式", Toast.LENGTH_LONG).show()
-            }
-        } else {
-            Toast.makeText(this, "Android 8.0 以下不支持桌面快捷方式", Toast.LENGTH_LONG).show()
-        }
     }
 
     private fun renderList(entries: List<FolderEntry>) {
         binding.listContainer.removeAllViews()
+        binding.tvEmpty.visibility = if (entries.isEmpty()) View.VISIBLE else View.GONE
         val inflater = LayoutInflater.from(this)
         for (entry in entries) {
             val item = inflater.inflate(R.layout.item_folder, binding.listContainer, false)
             item.findViewById<TextView>(R.id.tvName).text = entry.name
             item.findViewById<TextView>(R.id.tvPath).text =
                 "Pictures/${entry.rootDir}/${entry.name}"
-            item.findViewById<Button>(R.id.btnPin).setOnClickListener {
+            item.findViewById<View>(R.id.dotColor).backgroundTintList =
+                ColorStateList.valueOf(entry.color)
+
+            // 直接用该入口拍照
+            item.findViewById<View>(R.id.btnShot).setOnClickListener { openCamera(entry) }
+            // 加到桌面（固定快捷方式）
+            item.findViewById<View>(R.id.btnPin).setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     ShortcutHelper.pinShortcut(this, entry)
                 } else {
                     Toast.makeText(this, "系统版本过低，不支持", Toast.LENGTH_SHORT).show()
                 }
             }
-            item.findViewById<Button>(R.id.btnDelete).setOnClickListener {
+            // 删除
+            item.findViewById<View>(R.id.btnDelete).setOnClickListener {
                 lifecycleScope.launch { repo.delete(entry) }
             }
+            // 点击整张卡片也可拍照
+            item.setOnClickListener { openCamera(entry) }
+
             binding.listContainer.addView(item)
         }
+    }
+
+    private fun openCamera(entry: FolderEntry) {
+        startActivity(
+            Intent(this, CameraActivity::class.java)
+                .putExtra(CameraActivity.EXTRA_FOLDER_ID, entry.id)
+        )
     }
 
     private fun showAddDialog() {

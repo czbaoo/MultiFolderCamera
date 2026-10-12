@@ -1,60 +1,114 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#000000">
 
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <TextView
-        android:id="@+id/tvHint"
+    <!-- 系统相机模式下的占位提示 -->
+    <LinearLayout
+        android:id="@+id/systemHint"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:contentDescription="系统相机"
+            android:src="@drawable/ic_camera"
+            android:tint="#66FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="点击下方按钮，用系统相机拍照"
+            android:textColor="#99FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- 顶部信息胶囊 -->
+    <LinearLayout
+        android:id="@+id/topBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
         android:layout_marginTop="16dp"
-        android:background="#80000000"
-        android:padding="8dp"
-        android:textColor="#FFFFFF" />
+        android:background="@drawable/pill_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingTop="7dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="7dp">
+
+        <View
+            android:id="@+id/dotColor"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:background="@drawable/dot_bg" />
+
+        <TextView
+            android:id="@+id/tvHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnClose"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="16dp"
+        android:background="@drawable/pill_bg"
+        android:contentDescription="关闭"
+        android:src="@drawable/ic_close"
+        android:tint="#FFFFFF" />
 
     <TextView
         android:id="@+id/tvCount"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="124dp"
-        android:background="#80000000"
-        android:padding="6dp"
-        android:textColor="#FFFFFF" />
+        android:layout_marginBottom="132dp"
+        android:background="@drawable/pill_bg"
+        android:paddingStart="12dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="6dp"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:visibility="gone" />
 
     <ImageView
         android:id="@+id/ivThumb"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_gravity="bottom|start"
-        android:layout_margin="24dp"
-        android:background="#80000000"
+        android:layout_marginStart="24dp"
+        android:layout_marginBottom="34dp"
+        android:background="@drawable/thumb_bg"
+        android:clipToOutline="true"
         android:contentDescription="最近照片"
-        android:scaleType="centerCrop" />
-
-    <ImageButton
-        android:id="@+id/btnClose"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_gravity="top|start"
-        android:layout_margin="16dp"
-        android:backgroundTint="#80000000"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
-        android:tint="#FFFFFF" />
+        android:scaleType="centerCrop"
+        android:visibility="invisible" />
 
     <ImageButton
         android:id="@+id/btnShutter"
-        android:layout_width="72dp"
-        android:layout_height="72dp"
+        android:layout_width="76dp"
+        android:layout_height="76dp"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="32dp"
-        android:backgroundTint="#FFFFFF"
-        android:src="@android:drawable/ic_menu_camera"
-        android:tint="#000000" />
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/shutter_button"
+        android:contentDescription="拍照" />
 </FrameLayout>
