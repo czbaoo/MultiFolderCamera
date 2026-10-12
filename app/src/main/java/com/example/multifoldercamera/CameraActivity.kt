@@ -23,10 +23,8 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.extensions.ExtensionMode
-import androidx.camera.extensions.ExtensionSessionConfig
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.lifecycle.awaitInstance
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.multifoldercamera.data.AppDatabase
@@ -167,34 +165,41 @@ class CameraActivity : AppCompatActivity() {
 
     /* ---------------- 内置相机 + CameraX Extensions ---------------- */
 
-    private suspend fun setupCamera() {
-        try {
-            val provider = ProcessCameraProvider.awaitInstance(this)
-            cameraProvider = provider
-            extensionsManager = runCatching {
-                ExtensionsManager.getInstance(this, provider)
-            }.getOrNull()
-            buildModeChips()
-            bindWithMode(MODE_NONE)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "相机初始化失败", Toast.LENGTH_SHORT).show()
-        }
+    private fun setupCamera() {
+        val providerFuture = ProcessCameraProvider.getInstance(this)
+        providerFuture.addListener({
+            try {
+                val provider = providerFuture.get()
+                cameraProvider = provider
+                // 查询设备支持的扩展模式（自动/HDR/夜景/人像/美颜）
+                val extFuture = ExtensionsManager.getInstanceAsync(this, provider)
+                extFuture.addListener({
+                    extensionsManager = runCatching { extFuture.get() }.getOrNull()
+                    buildModeChips()
+                    bindWithMode(MODE_NONE)
+                }, ContextCompat.getMainExecutor(this))
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(this, "相机初始化失败", Toast.LENGTH_SHORT).show()
+            }
+        }, ContextCompat.getMainExecutor(this))
     }
 
-    /** 根据设备支持的扩展模式，生成模式切换条 */
+    /** 根据设备支持的扩展模式生成模式切换条 */
     private fun buildModeChips() {
-        val ext = extensionsManager ?: return
-        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        val ext = extensionsManager
         val items = mutableListOf("普通" to MODE_NONE)
-        fun addIfAvailable(mode: Int, label: String) {
-            if (ext.isExtensionAvailable(selector, mode)) items.add(label to mode)
+        if (ext != null) {
+            val selector = CameraSelector.DEFAULT_BACK_CAMERA
+            fun addIfAvailable(mode: Int, label: String) {
+                if (ext.isExtensionAvailable(selector, mode)) items.add(label to mode)
+            }
+            addIfAvailable(ExtensionMode.AUTO, "自动")
+            addIfAvailable(ExtensionMode.HDR, "HDR")
+            addIfAvailable(ExtensionMode.NIGHT, "夜景")
+            addIfAvailable(ExtensionMode.BOKEH, "人像")
+            addIfAvailable(ExtensionMode.FACE_RETOUCH, "美颜")
         }
-        addIfAvailable(ExtensionMode.AUTO, "自动")
-        addIfAvailable(ExtensionMode.HDR, "HDR")
-        addIfAvailable(ExtensionMode.NIGHT, "夜景")
-        addIfAvailable(ExtensionMode.BOKEH, "人像")
-        addIfAvailable(ExtensionMode.FACE_RETOUCH, "美颜")
 
         binding.modeGroup.removeAllViews()
         items.forEach { (label, mode) ->
@@ -214,7 +219,7 @@ class CameraActivity : AppCompatActivity() {
     private fun bindWithMode(mode: Int) {
         val provider = cameraProvider ?: return
         currentMode = mode
-        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        val baseSelector = CameraSelector.DEFAULT_BACK_CAMERA
         val preview = Preview.Builder().build().also {
             it.setSurfaceProvider(binding.viewFinder.surfaceProvider)
         }
@@ -225,16 +230,18 @@ class CameraActivity : AppCompatActivity() {
         provider.unbindAll()
         try {
             val ext = extensionsManager
-            if (mode != MODE_NONE && ext != null && ext.isExtensionAvailable(selector, mode)) {
-                val config = ExtensionSessionConfig(mode, ext, capture, preview)
-                provider.bindToLifecycle(this, selector, config)
+            val selector = if (mode != MODE_NONE && ext != null &&
+                ext.isExtensionAvailable(baseSelector, mode)
+            ) {
+                ext.getExtensionEnabledCameraSelector(baseSelector, mode)
             } else {
-                provider.bindToLifecycle(this, selector, preview, capture)
+                baseSelector
             }
+            provider.bindToLifecycle(this, selector, preview, capture)
         } catch (e: Exception) {
             e.printStackTrace()
             // 扩展绑定失败则回退到普通模式
-            runCatching { provider.bindToLifecycle(this, selector, preview, capture) }
+            runCatching { provider.bindToLifecycle(this, baseSelector, preview, capture) }
         }
     }
 
